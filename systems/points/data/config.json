@@ -1,0 +1,10 @@
+{
+  "logChannelId": "1389263795829866596",
+  "pointsPerTicket": 1,
+  "messages": {
+    "pointsAdded": "✅ تم إضافة نقاط بنجاح!",
+    "pointsRemoved": "✅ تم خصم نقاط بنجاح!",
+    "pointsReset": "✅ تم إعادة تعيين النقاط بنجاح!",
+    "noPoints": "❌ لا توجد نقاط لهذا المستخدم"
+  }
+}

@@ -1,0 +1,11 @@
+[
+  {
+    "userId": "968563794974478366",
+    "bankId": "MTC000000001",
+    "balance": 0,
+    "createdAt": "2025-01-01T00:00:00.000Z",
+    "createdBy": "system",
+    "suspended": false,
+    "taxes": []
+  }
+]

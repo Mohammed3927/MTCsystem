@@ -1,0 +1,17 @@
+{
+  "channelId": "1370018389497483345",
+  "apiUrl": {
+    "text": "https://api.cookie-api.com/api/ai/message",
+    "image": "https://api.cookie-api.com/api/ai/generate-image"
+  },
+  "apiToken": "okn47615ND8knTj7KEsvrusW8aChQQV9E9A0IyYy",
+  "imageKeywords": ["صورة"],
+  "replacements": {
+    "Cookie": "MT Community",
+    "API": "AI",
+    "Cookie's": "MT Community",
+    "API's": "AI",
+    "Cookies": "MT Community",
+    "APIs": "AI"
+  }
+}

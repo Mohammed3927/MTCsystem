@@ -1,0 +1,159 @@
+async handleTicketSelect(interaction, client) {
+        const ticketType = interaction.values[0];
+        const systemConfig = await loadSystemConfig();
+        
+        if (!systemConfig || !systemConfig.ticketTypes[ticketType]) {
+            return await interaction.reply({ content: '❌ نوع التذكرة غير صحيح.', ephemeral: true });
+        }
+
+        const guild = interaction.guild;
+        const member = interaction.member;
+        const ticketConfig = systemConfig.ticketTypes[ticketType];
+
+        // التحقق من البلاك ليست
+        if (member.roles.cache.has(systemConfig.blacklistRole)) {
+            return await interaction.reply({ 
+                content: '❌ أنت محظور من فتح التذاكر.', 
+                ephemeral: true 
+            });
+        }
+
+        // التحقق من وجود تذكرة مفتوحة للمستخدم
+        const tickets = await loadTickets();
+        const existingTicket = tickets.find(ticket => 
+            ticket.userId === member.id && ticket.status === 'open'
+        );
+
+        if (existingTicket) {
+            return await interaction.reply({ 
+                content: `❌ لديك تذكرة مفتوحة بالفعل: <#${existingTicket.channelId}>`, 
+                ephemeral: true 
+            });
+        }
+
+        try {
+            const channelName = ticketConfig.channelName.replace('{username}', member.user.username);
+
+            const ticketChannel = await guild.channels.create({
+                name: channelName,
+                type: ChannelType.GuildText,
+                parent: systemConfig.categoryId,
+                permissionOverwrites: [
+                    {
+                        id: guild.roles.everyone.id,
+                        deny: [PermissionFlagsBits.ViewChannel],
+                        type: 'role'
+                    },
+                    {
+                        id: member.id,
+                        allow: [
+                            PermissionFlagsBits.ViewChannel,
+                            PermissionFlagsBits.SendMessages,
+                            PermissionFlagsBits.ReadMessageHistory
+                        ],
+                        type: 'member'
+                    },
+                    ...ticketConfig.roles.map(roleId => ({
+                        id: roleId,
+                        allow: [
+                            PermissionFlagsBits.ViewChannel,
+                            PermissionFlagsBits.SendMessages,
+                            PermissionFlagsBits.ReadMessageHistory,
+                            PermissionFlagsBits.ManageMessages,
+                            PermissionFlagsBits.ManageChannels
+                        ],
+                        type: 'role'
+                    }))
+                ]
+            });
+
+            const permissions = systemConfig.permissions;
+            await ticketChannel.permissionOverwrites.edit(member.id, {
+                ViewChannel: true,
+                SendMessages: permissions.send_messages,
+                AttachFiles: permissions.attach_files,
+                EmbedLinks: permissions.embed_links,
+                UseExternalEmojis: permissions.use_external_emojis,
+                AddReactions: permissions.add_reactions
+            });
+
+            const ticket = {
+                id: generateId(),
+                channelId: ticketChannel.id,
+                userId: member.id,
+                type: ticketType,
+                status: 'open',
+                claimedBy: null,
+                createdAt: new Date().toLocaleString("en-US", { timeZone: "UTC" }),
+                claimedAt: null
+            };
+
+            tickets.push(ticket);
+            await saveTickets(tickets);
+
+            const welcomeMessage = `## MT Community Tickets <:MTC51:1385564410684244070> 
+
+اهلاً بك في قسم التذاكر يرجى منك قراءة جميع القوانين ادناه وإتباعها لضمان عدم التعرض للعقوبات الصارمة :
+*————————————————*
+### <:MTC46:1278875015281901664> قواعد وجب مراجعتها :
+- في حال فتح تذكرة وعدم الرد عليها أو التعامل معها بطريقة غير جدّية ، سيتم إضافتك إلى القائمة السوداء من فتح التذاكر .
+- سياسة الخصوصية : يرجى أن جميع محتويات التذاكر محمية بسرية تامة ، يُمنع منعًا باتًا نشر أي محتوى من داخل التذكرة ، أو مشاركاه مع أطراف أخرى ، أو أخد لقطات شاشة .
+<:MTC45:1278875041584648222> *أي انتهاك لهذه السياسات سيؤدي إلى اتخاذ إجراءات صارمة*
+
+**Ticket Type:** ${ticketConfig.name}
+**Created by:** <@${member.id}>
+**Ticket ID:** ${ticket.id}`;
+
+            const welcomeEmbed = new EmbedBuilder()
+                .setTitle('Ticket Created')
+                .setDescription(welcomeMessage)
+                .setColor(0x0099ff)
+                .addFields(
+                    { name: 'User', value: `<@${member.id}>`, inline: true },
+                    { name: 'Type', value: ticketConfig.name, inline: true },
+                    { name: 'Status', value: 'Open', inline: true }
+                )
+                .setTimestamp()
+                .setFooter({ text: 'MT Community' });
+
+            const buttonRow = new ActionRowBuilder()
+                .addComponents(
+                    new ButtonBuilder()
+                        .setCustomId('ticket_claim')
+                        .setLabel('Claim')
+                        .setStyle(ButtonStyle.Primary)
+                        .setEmoji('✋'),
+                    new ButtonBuilder()
+                        .setCustomId('ticket_close')
+                        .setLabel('Close')
+                        .setStyle(ButtonStyle.Danger)
+                        .setEmoji('🔒')
+                );
+
+            const manageMenu = new StringSelectMenuBuilder()
+                .setCustomId('ticket_manage')
+                .setPlaceholder('Ticket Management Options')
+                .addOptions(
+                    { label: 'Add/Remove User', description: 'Add or remove a user from this ticket', value: 'add_user', emoji: '👤' },
+                    { label: 'Summon User', description: 'Send DM to user to come to ticket', value: 'summon_user', emoji: '📨' },
+                    { label: 'Blacklist User', description: 'Add user to blacklist', value: 'blacklist_user', emoji: '🚫' },
+                    { label: 'Rename Ticket', description: 'Change ticket name', value: 'rename_ticket', emoji: '✏️' },
+                    { label: 'Channel Permissions', description: 'Manage channel permissions', value: 'channel_permissions', emoji: '🔧' }
+                );
+
+            const manageRow = new ActionRowBuilder().addComponents(manageMenu);
+
+            await ticketChannel.send({ embeds: [welcomeEmbed], components: [buttonRow, manageRow] });
+
+            if (ticketConfig.mentionRoles && ticketConfig.mentionRoles.length > 0) {
+                const mentions = ticketConfig.mentionRoles.map(roleId => `<@&${roleId}>`).join(' ');
+                await ticketChannel.send(mentions);
+            }
+
+            await interaction.reply({ content: `✅ تم إنشاء تذكرتك بنجاح: ${ticketChannel}`, ephemeral: true });
+
+        } catch (error) {
+            console.error('خطأ في إنشاء التذكرة:', error);
+            await interaction.reply({ content: '❌ حدث خطأ في إنشاء التذكرة.', ephemeral: true });
+        }
+    }

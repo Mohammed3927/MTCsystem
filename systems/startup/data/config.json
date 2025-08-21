@@ -1,0 +1,17 @@
+
+{
+    "applySystemEnabled": true,
+    "channels": {
+        "main": "",
+        "guidelines": "",
+        "notifications": ""
+    },
+    "roles": {
+        "notification": "",
+        "booster": ""
+    },
+    "messages": {
+        "welcome": "مرحباً بك في MT Community!",
+        "guidelines": "يرجى قراءة القوانين بعناية"
+    }
+}

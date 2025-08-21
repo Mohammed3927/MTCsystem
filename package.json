@@ -1,0 +1,24 @@
+{
+  "name": "mt-community-discord-bot",
+  "version": "1.0.0",
+  "description": "Discord application bot for MT Community",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "axios": "^1.10.0",
+    "discord-html-transcripts": "^3.2.0",
+    "discord.js": "^14.21.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "discord",
+    "bot",
+    "applications"
+  ],
+  "author": "MT Community",
+  "license": "MIT"
+}

@@ -1,0 +1,15 @@
+{
+  "channelId": "1271355936958582855",
+  "taxRate": 0.05,
+  "taxSystemAccount": "968563794974478366",
+  "transferVerificationTime": 10000,
+  "taxPaymentDeadlineDays": 3,
+  "defaultBankBalance": 100,
+  "messages": {
+    "bankCreated": "✅ تم إنشاء حسابك البنكي بنجاح!",
+    "transferSuccess": "✅ تم تحويل العملات بنجاح",
+    "taxCollected": "تم خصم ضريبة التحويل",
+    "accountSuspended": "❌ حسابك معلق مؤقتاً",
+    "insufficientFunds": "❌ رصيدك غير كافي"
+  }
+}

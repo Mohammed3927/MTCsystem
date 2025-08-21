@@ -1,0 +1,303 @@
+async handleTicketClaim(interaction) {
+        const systemConfig = await loadSystemConfig();
+        const tickets = await loadTickets();
+
+        const ticket = tickets.find(t => t.channelId === interaction.channel.id);
+        if (!ticket) return await interaction.reply({ content: '❌ لم يتم العثور على بيانات التذكرة.', ephemeral: true });
+
+        if (ticket.claimedBy) return await interaction.reply({ content: '❌ هذه التذكرة مستلمة بالفعل.', ephemeral: true });
+
+        if (ticket.userId === interaction.user.id) {
+            return await interaction.reply({ content: '❌ لا يمكنك استلام التذكرة الخاصة بك.', ephemeral: true });
+        }
+
+        const ticketConfig = systemConfig.ticketTypes[ticket.type];
+        const hasPermission = interaction.member.roles.cache.some(role => ticketConfig.roles.includes(role.id)) 
+            || interaction.member.permissions.has(PermissionFlagsBits.Administrator);
+
+        if (!hasPermission) {
+            return await interaction.reply({ content: '❌ ليس لديك صلاحية لاستلام هذه التذكرة.', ephemeral: true });
+        }
+
+        ticket.claimedBy = interaction.user.id;
+        ticket.claimedAt = new Date().toLocaleString('en-US', { timeZone: 'UTC' });
+
+        // إضافة تاريخ الاستلام إلى السجل
+        if (!ticket.claimHistory) ticket.claimHistory = [];
+        ticket.claimHistory.push({
+            userId: interaction.user.id,
+            action: 'claimed',
+            timestamp: new Date().toLocaleString('en-US', { timeZone: 'UTC' }),
+            isAdminAction: interaction.member.permissions.has(PermissionFlagsBits.Administrator)
+        });
+
+        await saveTickets(tickets);
+
+        await this.addTicketPoint(interaction.user.id);
+
+        const updatedEmbed = EmbedBuilder.from(interaction.message.embeds[0])
+            .setFields(
+                { name: 'User', value: `<@${ticket.userId}>`, inline: true },
+                { name: 'Type', value: ticketConfig.name, inline: true },
+                { name: 'Status', value: 'Claimed', inline: true },
+                { name: 'Claimed by', value: `<@${interaction.user.id}>`, inline: true },
+                { name: 'Claimed at', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: true }
+            )
+            .setColor(0x00ff00);
+
+        const buttonRow = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder().setCustomId('ticket_unclaim').setLabel('Unclaim').setStyle(ButtonStyle.Secondary).setEmoji('↪️'),
+                new ButtonBuilder().setCustomId('ticket_close').setLabel('Close').setStyle(ButtonStyle.Danger).setEmoji('🔒')
+            );
+
+        const manageMenu = new StringSelectMenuBuilder()
+            .setCustomId('ticket_manage')
+            .setPlaceholder('Ticket Management Options')
+            .addOptions(
+                { label: 'Add/Remove User', description: 'Add or remove a user from this ticket', value: 'add_user', emoji: '👤' },
+                { label: 'Summon User', description: 'Send DM to user to come to ticket', value: 'summon_user', emoji: '📨' },
+                { label: 'Blacklist User', description: 'Add user to blacklist', value: 'blacklist_user', emoji: '🚫' },
+                { label: 'Rename Ticket', description: 'Change ticket name', value: 'rename_ticket', emoji: '✏️' },
+                { label: 'Channel Permissions', description: 'Manage channel permissions', value: 'channel_permissions', emoji: '🔧' }
+            );
+
+        const manageRow = new ActionRowBuilder().addComponents(manageMenu);
+
+        await interaction.update({ embeds: [updatedEmbed], components: [buttonRow, manageRow] });
+    }
+
+    async handleTicketUnclaim(interaction) {
+        const systemConfig = await loadSystemConfig();
+        const tickets = await loadTickets();
+
+        const ticket = tickets.find(t => t.channelId === interaction.channel.id);
+        if (!ticket) return await interaction.reply({ content: '❌ لم يتم العثور على بيانات التذكرة.', ephemeral: true });
+
+        if (!ticket.claimedBy) return await interaction.reply({ content: '❌ هذه التذكرة غير مستلمة حالياً.', ephemeral: true });
+
+        if (ticket.claimedBy !== interaction.user.id && !interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+            return await interaction.reply({ content: '❌ فقط الشخص اللي استلم التذكرة يقدر يفك الاستلام.', ephemeral: true });
+        }
+
+        // إضافة تاريخ فك الاستلام إلى السجل
+        if (!ticket.claimHistory) ticket.claimHistory = [];
+        ticket.claimHistory.push({
+            userId: interaction.user.id,
+            action: 'unclaimed',
+            timestamp: new Date().toLocaleString('en-US', { timeZone: 'UTC' }),
+            isAdminAction: interaction.member.permissions.has(PermissionFlagsBits.Administrator)
+        });
+
+        ticket.claimedBy = null;
+        ticket.claimedAt = null;
+        await saveTickets(tickets);
+
+        const ticketConfig = systemConfig.ticketTypes[ticket.type];
+        const updatedEmbed = EmbedBuilder.from(interaction.message.embeds[0])
+            .setFields(
+                { name: 'User', value: `<@${ticket.userId}>`, inline: true },
+                { name: 'Type', value: ticketConfig.name, inline: true },
+                { name: 'Status', value: 'Open', inline: true }
+            )
+            .setColor(0x0099ff);
+
+        const buttonRow = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder().setCustomId('ticket_claim').setLabel('Claim').setStyle(ButtonStyle.Primary).setEmoji('✋'),
+                new ButtonBuilder().setCustomId('ticket_close').setLabel('Close').setStyle(ButtonStyle.Danger).setEmoji('🔒')
+            );
+
+        const manageMenu = new StringSelectMenuBuilder()
+            .setCustomId('ticket_manage')
+            .setPlaceholder('Ticket Management Options')
+            .addOptions(
+                { label: 'Add/Remove User', description: 'Add or remove a user from this ticket', value: 'add_user', emoji: '👤' },
+                { label: 'Summon User', description: 'Send DM to user to come to ticket', value: 'summon_user', emoji: '📨' },
+                { label: 'Blacklist User', description: 'Add user to blacklist', value: 'blacklist_user', emoji: '🚫' },
+                { label: 'Rename Ticket', description: 'Change ticket name', value: 'rename_ticket', emoji: '✏️' },
+                { label: 'Channel Permissions', description: 'Manage channel permissions', value: 'channel_permissions', emoji: '🔧' }
+            );
+
+        const manageRow = new ActionRowBuilder().addComponents(manageMenu);
+
+        await interaction.update({ embeds: [updatedEmbed], components: [buttonRow, manageRow] });
+        await interaction.channel.send(`↩️ <@${interaction.user.id}> فك استلام التذكرة. يمكن الآن لأي إداري استلامها.`);
+    }
+
+    async handleTicketClose(interaction) {
+        const systemConfig = await loadSystemConfig();
+        const tickets = await loadTickets();
+        const ticket = tickets.find(t => t.channelId === interaction.channel.id);
+
+        if (!ticket) return await interaction.reply({ content: '❌ لم يتم العثور على بيانات التذكرة.', ephemeral: true });
+
+        const canClose = ticket.claimedBy === interaction.user.id || 
+                        interaction.member.permissions.has(PermissionFlagsBits.Administrator);
+
+        if (!canClose) {
+            return await interaction.reply({ content: '❌ يمكن فقط للأدمن الذي استلم التذكرة أو المدير إغلاقها.', ephemeral: true });
+        }
+
+        try {
+            ticket.status = 'closed';
+            ticket.closedBy = interaction.user.id;
+            ticket.closedAt = new Date().toLocaleString('en-US', { timeZone: 'UTC' });
+            await saveTickets(tickets);
+
+            const claimRequests = await loadClaimRequests();
+            const updatedRequests = claimRequests.filter(req => req.channelId !== interaction.channel.id);
+            await saveClaimRequests(updatedRequests);
+
+            await interaction.reply('🔒 سيتم إغلاق التذكرة خلال 5 ثوان...');
+
+            setTimeout(async () => {
+                try {
+        // 1. جيب القناة قبل الحذف
+                    const channel = interaction.guild.channels.cache.get(ticket.channelId);
+
+        // 2. سوّي الترانسكريبت وأرسل اللوق
+                    await this.logTicketClosure(interaction.guild, ticket, systemConfig);
+
+        // 3. بعد ما ينرسل اللوق احذف القناة
+                    if (channel) await channel.delete();
+                } catch (error) {
+                    console.error('خطأ في تسجيل أو حذف قناة التذكرة:', error);
+                    }
+            }, 5000);
+
+        } catch (error) {
+            console.error('خطأ في إغلاق التذكرة:', error);
+            await interaction.reply({ content: '❌ حدث خطأ في إغلاق التذكرة.', ephemeral: true });
+        }
+    }
+
+    async logTicketClosure(guild, ticket, systemConfig) {
+        try {
+            const logChannel = guild.channels.cache.get(systemConfig.logChannelId);
+            if (!logChannel) return;
+
+            const ticketTypeName = getTicketTypeName(ticket.type, systemConfig);
+            const user = await guild.members.fetch(ticket.userId).catch(() => null);
+            const closer = await guild.members.fetch(ticket.closedBy).catch(() => null);
+            const claimer = ticket.claimedBy ? await guild.members.fetch(ticket.claimedBy).catch(() => null) : null;
+            const channel = guild.channels.cache.get(ticket.channelId);
+
+            if (!channel) {
+                console.error(`Could not find channel for ticket ${ticket.id}`);
+                return;
+            }
+
+            // إنشاء معلومات تاريخ الاستلام
+            let claimHistoryText = 'لم يتم الاستلام';
+            if (ticket.claimHistory && ticket.claimHistory.length > 0) {
+                claimHistoryText = ticket.claimHistory.map(claim => {
+                    const action = claim.action === 'claimed' ? 'استلم' : 'فك الاستلام';
+                    const adminText = claim.isAdminAction ? ' (مدير)' : '';
+                    const timestamp = `<t:${Math.floor(new Date(claim.timestamp).getTime() / 1000)}:R>`;
+                    return `• <@${claim.userId}> ${action}${adminText} ${timestamp}`;
+                }).join('\n');
+            }
+
+            const logEmbed = new EmbedBuilder()
+                .setTitle('🔒 تم إغلاق تذكرة')
+                .setDescription('معلومات التذكرة الكاملة مع الترانسكريبت')
+                .setColor(0xff0000)
+                .addFields(
+                    { name: '🆔 معرف التذكرة', value: ticket.id, inline: true },
+                    { name: '📋 نوع التذكرة', value: ticketTypeName, inline: true },
+                    { name: '📊 الحالة', value: 'مُغلقة', inline: true },
+                    { name: '👤 منشئ التذكرة', value: user ? `<@${ticket.userId}>` : `مستخدم مجهول (${ticket.userId})`, inline: true },
+                    { name: '🔒 مُغلقة بواسطة', value: closer ? `<@${ticket.closedBy}>` : `مستخدم مجهول (${ticket.closedBy})`, inline: true },
+                    { name: '⏰ مدة التذكرة', value: this.calculateDuration(ticket.createdAt, ticket.closedAt), inline: true },
+                    { name: '📅 تاريخ الإنشاء', value: `<t:${Math.floor(new Date(ticket.createdAt).getTime() / 1000)}:F>`, inline: true },
+                    { name: '🔒 تاريخ الإغلاق', value: `<t:${Math.floor(new Date(ticket.closedAt).getTime() / 1000)}:F>`, inline: true },
+                    { name: '📋 تاريخ الاستلام', value: claimHistoryText, inline: false }
+                )
+                .setTimestamp()
+                .setFooter({ text: 'MT Community Tickets' });
+
+            // إنشاء الترانسكريبت
+            const messages = await this.fetchAllMessages(channel);
+            const transcriptHTML = await this.formatTranscript(messages, ticket, channel);
+
+            if (transcriptHTML) {
+                await logChannel.send({
+                    embeds: [logEmbed],
+                    files: [{
+                        attachment: Buffer.from(transcriptHTML, 'utf8'),
+                        name: `ticket-${channel.name}-${Date.now()}.html`
+                    }]
+                });
+            } else {
+                await logChannel.send({ embeds: [logEmbed] });
+            }
+
+        } catch (error) {
+            console.error('خطأ في تسجيل إغلاق التذكرة:', error);
+        }
+    }
+
+    // دالة محدثة للترانسكريبت
+    async createTranscript(channel, ticketData) {
+        try {
+            const messages = await this.fetchAllMessages(channel);
+            const transcript = await this.formatTranscript(messages, ticketData, channel);
+
+            // إنشاء الإيمبد للترانسكريبت
+            const transcriptEmbed = new EmbedBuilder()
+                .setTitle(`📋 ترانسكريبت التذكرة`)
+                .setColor(config.COLORS.PRIMARY)
+                .addFields(
+                    { name: '🎫 اسم التذكرة', value: `#${channel.name}`, inline: true },
+                    { name: '👤 منشئ التذكرة', value: `<@${ticketData.userId}>`, inline: true },
+                    { name: '📅 تاريخ الإنشاء', value: ticketData.createdAt || 'غير محدد', inline: true },
+                    { name: '🔒 تاريخ الإغلاق', value: new Date().toLocaleString('en-US', { timeZone: 'UTC' }), inline: true },
+                    { name: '💬 عدد الرسائل', value: messages.length.toString(), inline: true },
+                    { name: '⏱️ مدة التذكرة', value: this.calculateDuration(ticketData.createdAt), inline: true }
+                )
+                .setTimestamp()
+                .setFooter({ text: 'MT Community Tickets' });
+
+            // إضافة تاريخ الاستلام إذا كان موجوداً
+            if (ticketData.claimHistory && ticketData.claimHistory.length > 0) {
+                const claimInfo = ticketData.claimHistory
+                    .map(claim => {
+                        const action = claim.action === 'claimed' ? 'استلم' : 'فك الاستلام';
+                        const adminText = claim.isAdminAction ? ' (بواسطة المدير)' : '';
+                        return `• <@${claim.userId}> ${action} التذكرة${adminText}`;
+                    })
+                    .join('\n');
+
+                transcriptEmbed.addFields({ 
+                    name: '📋 تاريخ الاستلام', 
+                    value: claimInfo, 
+                    inline: false 
+                });
+            }
+
+            // إرسال الترانسكريبت للقناة المحددة
+            const logChannel = channel.guild.channels.cache.get('1387340403983908997'); // Replace with your actual log channel ID
+            if (logChannel) {
+                await logChannel.send({
+                    embeds: [transcriptEmbed],
+                    files: [{
+                        attachment: Buffer.from(transcript, 'utf8'),
+                        name: `ticket-${channel.name}-${Date.now()}.html`
+                    }]
+                });
+            }
+        } catch (error) {
+            console.error('خطأ في إنشاء الترانسكريبت:', error);
+        }
+    }
+
+    async fetchAllMessages(channel) {
+        const messages = [];
+        let lastId;
+        while (true) {
+            const fetched = await channel.messages.fetch({ limit: 100, before: lastId });
+            if (fetched.size === 0) break;
+            messages.push(...fetched.values());
+            lastId = fetched.last().id;
+        }
