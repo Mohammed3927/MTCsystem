@@ -1,5 +1,5 @@
 module.exports = {
-    DISCORD_TOKEN: process.env.DISCORD_TOKEN || 'MTM3NTU4Mzk2MTY3NzU2NjAwMg.G7Lum3.Ro5sfOM5DDVdJXjXF6JoBTDfe-yDUbabBmWNMM',
+    DISCORD_TOKEN: process.env.DISCORD_TOKEN || 'anythingwithtoken',
     PREFIX: '+',
 
     // System toggles - تفعيل/إلغاء تفعيل الأنظمة
